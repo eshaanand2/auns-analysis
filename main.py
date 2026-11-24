@@ -17,16 +17,18 @@ SMOOTH = True
 EPSILON = None  #no standard value for AuNS
 PATH_LENGTH = 1.0
 DILUTION_TAGS = {"50-50": 2.0}  # filename tag -> dilution factor (no tag = undiluted)
+GROUPS = {"undiluted": 1.0, "diluted": 2.0}
+SAT_LIMIT = 2.0
  
 EXCLUDE = []
  
 OUT_DIR.mkdir(exist_ok=True)
  
 def parse_name(stem):
-    m = re.search(r"(\d+(?:[._]\d+)?)\s*mM", stem, re.I)
+    m = re.search(r"(?<![\d.])(\d+(?:\.\d+)?)\s*mM", stem, re.I)
     if not m:
-        raise ValueError(f"Can't find a concentration like '10_5mM' in '{stem}'")
-    conc = float(m.group(1).replace("_", "."))
+        raise ValueError(f"Can't find a concentration like '10.5mM' in '{stem}'")
+    conc = float(m.group(1))
     r = re.search(r"round[_ ]?(\d+)|[_ ]r(\d+)", stem, re.I)
     rnd = int(r.group(1) or r.group(2)) if r else 1
     return conc, rnd
@@ -54,20 +56,21 @@ def get_dilution(stem):
             return d
     return 1.0
  
-def load_all():
-    spectra = {}
+def load_all(group):
+    want = GROUPS[group]
+    spectra, seen = {}, {}
     for f in sorted(DATA_DIR.glob("*.[Tt][Xx][Tt]")):
-        if f.stem in EXCLUDE:
+        if f.stem in EXCLUDE or get_dilution(f.stem) != want:
             continue
         df = read_uds_txt(f)
-        df = df[(df.wl >= WL_MIN) & (df.wl <= WL_MAX)].sort_values("wl")
+        df = df[(df.wl >= WL_MIN) & (df.wl <= WL_MAX)].sort_values("wl").reset_index(drop=True)
+        df["abs_corr"] = df["abs"] * want
         key = parse_name(f.stem)
         if key in spectra:
-            raise ValueError(f"Two files map to {key} - add 'round#' to the filenames")
-        if df["abs"].max() > 2:
-            print(f"WARNING {f.name}: absorbance reaches {df['abs'].max():.2f} (>2 is unreliable, consider diluting)")
-        df = df.reset_index(drop=True)
-        df["abs_corr"] = df["abs"] * get_dilution(f.stem)
+            raise ValueError(f"'{seen[key]}' and '{f.name}' both map to {key}")
+        seen[key] = f.name
+        if df["abs"].max() > SAT_LIMIT:
+            print(f"WARNING {f.name}: absorbance reaches {df['abs'].max():.2f} (>{SAT_LIMIT} is unreliable)")
         spectra[key] = df
     return spectra
  
@@ -172,10 +175,17 @@ def shoulders(spectra):
 
 
 if __name__ == "__main__":
-    sp = load_all()
-    beer_lambert(sp)
-    plot_spectra(sp)
-    pk = peak_table(sp); print(pk, "\n")
-    print(summary(pk), "\n")
-    print(ttests(pk), "\n")
-    print(shoulders(sp))
+    for group in GROUPS:
+        print(f"\n===== {group} =====")
+        sp = load_all(group)
+        if not sp:
+            print("no files in this group")
+            continue
+        OUT_DIR = Path("results") / group
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        beer_lambert(sp)
+        plot_spectra(sp)
+        pk = peak_table(sp); print(pk, "\n")
+        print(summary(pk), "\n")
+        print(ttests(pk), "\n")
+        print(shoulders(sp))

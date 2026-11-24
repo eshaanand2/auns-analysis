@@ -3,7 +3,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-import auns_analysis as aa
+import main as aa
+
 
 FIG_DIR = Path("poster_figs")
 FIG_DIR.mkdir(exist_ok=True)
@@ -102,8 +103,15 @@ def fig_peak_trends(spectra, pk):
 
 
 if __name__ == "__main__":
-    sp = aa.load_all()
-    pk = aa.peak_table(sp)
-    fig_spectra(sp)
-    fig_peak_trends(sp, pk)
-    print(f"Saved figures to {FIG_DIR.resolve()}")
+    for group in aa.GROUPS:
+        sp = aa.load_all(group)
+        if not sp:
+            continue
+        aa.OUT_DIR = Path("results") / group
+        aa.OUT_DIR.mkdir(parents=True, exist_ok=True)
+        FIG_DIR = Path("poster_figs") / group
+        FIG_DIR.mkdir(parents=True, exist_ok=True)
+        pk = aa.peak_table(sp)
+        fig_spectra(sp)
+        fig_peak_trends(sp, pk)
+        print(f"Saved {group} figures to {FIG_DIR.resolve()}")
