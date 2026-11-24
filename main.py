@@ -29,6 +29,7 @@ def parse_name(stem):
     if not m:
         raise ValueError(f"Can't find a concentration like '10.5mM' in '{stem}'")
     conc = float(m.group(1))
+    
     r = re.search(r"round[_ ]?(\d+)|[_ ]r(\d+)", stem, re.I)
     rnd = int(r.group(1) or r.group(2)) if r else 1
     return conc, rnd
